@@ -87,7 +87,7 @@ def regiser_new_client(face_encoded):
         New client
     """
     new_client = Client(last_view=datetime.now(),
-                                allowed=True)
+                                status=True)
     new_face = Face(encoded=np.array(face_encoded).tobytes(),
                     client=new_client)
     new_client.save()
@@ -175,12 +175,14 @@ def identify_faces(request):
         logger.info(f"Face has been encoded by model.")
         logger.debug(f"Face encoded data : {face_encoded}")
         #Compare face with all known faces in db
-        distances = face_recognition.face_distance(known_faces_encoded, 
-                                                    face_encoded[0]).tolist()
-        similarities = [1 - d for d in distances]
-        similarity = max(similarities)
-        face = known_faces[similarities.index(similarity)]
-        #matches = [known_faces[i] for i,sf in enumerate(same_face) if sf]
+        if known_faces_encoded:
+            distances = face_recognition.face_distance(known_faces_encoded, 
+                                                        face_encoded[0]).tolist()
+            similarities = [1 - d for d in distances]
+            similarity = max(similarities)
+            face = known_faces[similarities.index(similarity)]
+        else:
+            similarity = 0
         if similarity < 0.5:
             new_client = regiser_new_client(face_encoded)
             face_data["infos"] = new_client.get_data()
