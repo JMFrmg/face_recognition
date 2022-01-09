@@ -1,0 +1,254 @@
+<!doctype html>
+{% load static %}
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Face recognizer</title>
+
+    <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script> -->
+    <!-- Latest compiled and minified CSS -->
+   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+   
+   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+  </head>
+  <body>
+   <div class="container mt-5">
+      <div>
+         <div class="row mb-3">
+            <label for="formFile" class="form-label">Reconnaissance faciale</label>
+            <input type="file" id="formFile"  class="form-control" accept = "image/*">
+         </div>
+         <div class="row text-center mt-2" style="height: 500px">
+            <div class="mh-100">
+               <canvas id= "myCanvas" class="img-fluid mh-100" style="width: auto;"></canvas>
+            </div>
+         </div>
+      </div>
+      <div>
+         <iframe name="hiddenFrame" class="hide" style="display:none"></iframe>
+      </div>
+   </div>
+   <div class="container">
+      <div id="faces_infos" class="row">
+      </div>
+      
+   </div>
+
+      <script>
+         //Titled strings
+         String.prototype.toProperCase = function () {
+             return this.replace(/\w\S*/g, function(txt){return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();});
+         };
+
+         function getBase64(file) {
+            //Return base64 encoded image
+            return new Promise((resolve, reject) => {
+               const reader = new FileReader();
+               reader.readAsDataURL(file);
+               reader.onload = () => resolve(reader.result);
+               reader.onerror = error => reject(error);
+            });
+         }
+
+
+         function get_faces(data){
+            //Post prediction request to backend
+            const dataToSend = JSON.stringify({"image": data});
+            let dataReceived = "";
+
+            fetch("predict/", {
+               credentials: "same-origin",
+               mode: "same-origin",
+               method: "post",
+               headers: {"Content-Type": "application/json"},
+               body: dataToSend
+            }).then(resp => {
+                  if (resp.status === 200) {
+                        return resp.json()        
+                  } else {
+                        return Promise.reject("server")
+                  }
+               })
+               
+               .catch(err => {
+                  if (err === "server") return
+                  console.log(err)
+               })
+               
+               .then(data => {
+                  //Draw the boxes on image
+                  data["faces"].forEach(face_data => {
+                     coords = face_data["boxes"];
+                     console.log(coords);
+                     var canvas = document.getElementById('myCanvas');
+                     var ctx = canvas.getContext('2d');
+                     ctx.rect(coords[3], coords[2], coords[1]-coords[3], coords[0]-coords[2]);
+                     ctx.stroke();
+                     ctx.font = 'small-caps bold 5em sans-serif';
+                     ctx.fillText(face_data["infos"]["index"], coords[1]+10, coords[0]-10);
+                  })
+                  return data
+               })
+               .then(data => {
+                  //Show faces informations
+                  show_forms(data);
+               })
+         }
+
+         function show_forms(data){
+            //Create and load HTML form with identified faces informations
+            infos_div = document.getElementById("faces_infos");
+            infos_div.innerHTML = "";
+            infos_div.className = "mt-4";
+            var faces_data = data["faces"];
+            faces_data.forEach(data => {
+               face_infos = data["infos"];
+               var form = document.createElement("form");
+               form.setAttribute("class", "face-form mt-1");
+               form.setAttribute("action", "update_face_data/");
+               form.setAttribute("method", "post");
+               form.setAttribute("target", "hiddenFrame");
+               if (face_infos["first_name"] !== undefined) {
+                  face_div = document.createElement("div");
+                  face_div.className = "row";
+                  for (const [key, value] of Object.entries(face_infos)) {
+                     var info_label = document.createElement("label");
+                     info_label.setAttribute("for", key);
+                     var text = document.createTextNode(key.replace("_", " ").toProperCase());
+                     info_label.appendChild(text);
+                     info_label.className = "form-label col text-center";
+                     if (key === "status") {
+                        var info_input = document.createElement("select");
+                        info_input.setAttribute("id", key);
+                        //info_input.setAttribute("value", value);
+                        option1 = document.createElement("option");
+                        option1.setAttribute("value", 1);
+                        var text = document.createTextNode("Allowed");
+                        option1.appendChild(text);
+                        option2 = document.createElement("option");
+                        option2.setAttribute("value", 0);
+                        var text = document.createTextNode("Not Allowed");
+                        option2.appendChild(text);
+                        if (value == "0") {
+                           option2.setAttribute("selected", "");
+                        } else {
+                           option1.setAttribute("selected", "");
+                        }
+                        info_input.appendChild(option1);
+                        info_input.appendChild(option2);
+                        info_input.setAttribute("type", "");
+                        info_input.className = "form-select col";
+                     } else {
+                        var info_input = document.createElement("input");
+                        info_input.setAttribute("id", key);
+                        info_input.setAttribute("value", value);
+                        info_input.className = "form-control col";
+                     }
+                     if (key==="last_view") {
+                        info_input.setAttribute("type", "datetime");
+                     } else {
+                        info_input.setAttribute("type", "text");
+                     }
+                     info_input.setAttribute("name", key);
+                     if (key === "last_view") {
+                        var date = value.split("T")[0];
+                        info_input.setAttribute("value", date);
+                        info_input.setAttribute("disabled", "");
+                     } else {
+                        //info_input.setAttribute("placeholder", value);
+                     }
+                     if (key === "id") {
+                        info_label.style.display = "none";
+                        info_input.setAttribute("value", value);
+                        info_input.setAttribute("type", "hidden");
+                     }
+                     if (key === "index") {
+                        info_label.style.display = "none";
+                        info_input.setAttribute("value", value);
+                        info_input.setAttribute("disabled", "");
+                        face_div.prepend(info_input);
+                        face_div.prepend(info_label);
+                        continue;
+                     }
+                     face_div.appendChild(info_label);
+                     face_div.appendChild(info_input);
+                  }
+               // create a submit button
+               var d = document.createElement("div");
+               d.className = "col ml-2 float-right";
+               var s = document.createElement("input");
+               s.className = "btn btn-primary";
+               s.setAttribute("type", "submit");
+               s.setAttribute("value", "Submit");
+               d.appendChild(s);
+               face_div.appendChild(d);
+               form.appendChild(face_div);
+               } else {
+                  var face_div = document.createElement("div");
+                  face_div.className = "row";
+                  var info_input = document.createElement("input");
+                  info_input.setAttribute("id", "index");
+                  info_input.setAttribute("value", face_infos["index"]);
+                  info_input.className = "col-2";
+                  info_input.setAttribute("disabled", "");
+                  face_div.prepend(info_input);
+                  var message_div = document.createElement("div");
+                  message_div.className = "col-10";
+                  var message = document.createElement("p");
+                  var text = document.createTextNode("Identification impossible.");
+                  message.appendChild(text);
+                  message_div.appendChild(message);
+                  face_div.appendChild(message_div);
+                  form.appendChild(face_div);
+               }
+               
+               infos_div.appendChild(form); 
+            })
+         }
+
+
+         let imgInput = document.getElementById("formFile");
+         imgInput.addEventListener('change', function(e) {
+            //Load new image in canvas
+            if(e.target.files) {
+               let imageFile = e.target.files[0]; //here we get the image file
+               var reader = new FileReader();
+               reader.readAsDataURL(imageFile);
+               reader.onloadend = function (e) {
+                  var myImage = new Image(); // Creates image object
+                  myImage.src = e.target.result; // Assigns converted image to image object
+                  myImage.onload = function(ev) {
+                     var myCanvas = document.getElementById("myCanvas"); // Creates a canvas object
+                     var myContext = myCanvas.getContext("2d"); // Creates a contect object
+                     myCanvas.width = myImage.width; // Assigns image's width to canvas
+                     myCanvas.height = myImage.height; // Assigns image's height to canvas
+                     myContext.drawImage(myImage,0,0); // Draws the image on canvas
+                     let imgData = myCanvas.toDataURL("image/jpeg",0.75); // Assigns image base64 string in jpeg format to a variable
+                     //Get predictions from backend
+                     get_faces(myImage.src)
+               
+                  }
+               }
+            }
+         });
+
+
+         
+         let mycanvas = document.getElementById('myCanvas');
+         mycanvas.onchange = evt => {
+         const file = document.querySelector('#myCanvas').files[0];
+         if (file) {
+               getBase64(file).then(
+                  data => get_faces(data)
+               ).then(data => {
+                  console.log(data);
+               })
+                     
+            }
+         }
+      </script>
